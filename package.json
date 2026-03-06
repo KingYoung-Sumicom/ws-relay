@@ -38,7 +38,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sumicom/ws-relay.git"
+    "url": "https://github.com/KingYoung-Sumicom/ws-relay.git"
   },
   "publishConfig": {
     "access": "public"
