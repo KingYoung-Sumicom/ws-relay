@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { KEY_FORMAT } from './types.js';
 import type { ChannelConfig } from './types.js';
 
 interface SignalingMessage {
@@ -60,4 +61,11 @@ export function sendMessage(ws: WebSocket, message: SignalingMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
   }
+}
+
+/**
+ * Validate that a string matches the access key format (KEY_FORMAT regex).
+ */
+export function isValidKeyFormat(key: string): boolean {
+  return KEY_FORMAT.test(key);
 }

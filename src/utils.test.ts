@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parsePeerUrl, sendMessage } from './utils.js';
+import { parsePeerUrl, sendMessage, isValidKeyFormat } from './utils.js';
 import { WebSocket } from 'ws';
 import type { ChannelConfig } from './types.js';
 
@@ -103,6 +103,36 @@ describe('parsePeerUrl', () => {
       // Too short (< 8 chars)
       expect(parsePeerUrl(channels, '/client/key/short')).toBeNull();
     });
+  });
+});
+
+describe('isValidKeyFormat', () => {
+  it('should accept valid key (8 chars)', () => {
+    expect(isValidKeyFormat('abcd1234')).toBe(true);
+  });
+
+  it('should accept valid key (64 chars)', () => {
+    expect(isValidKeyFormat('a'.repeat(64))).toBe(true);
+  });
+
+  it('should accept key with dashes and underscores', () => {
+    expect(isValidKeyFormat('my_key-12345')).toBe(true);
+  });
+
+  it('should reject key shorter than 8 chars', () => {
+    expect(isValidKeyFormat('short')).toBe(false);
+  });
+
+  it('should reject key longer than 64 chars', () => {
+    expect(isValidKeyFormat('a'.repeat(65))).toBe(false);
+  });
+
+  it('should reject key with special characters', () => {
+    expect(isValidKeyFormat('key@with!dots')).toBe(false);
+  });
+
+  it('should reject empty string', () => {
+    expect(isValidKeyFormat('')).toBe(false);
   });
 });
 
