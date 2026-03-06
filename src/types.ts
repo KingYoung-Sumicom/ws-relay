@@ -14,6 +14,9 @@ export interface Peer {
   address: PeerAddress;
   ip: string;
   connectedAt: number;
+  key?: string;
+  bytesIn: number;
+  bytesOut: number;
 }
 
 /** Internal extended WebSocket with tracking metadata */
@@ -85,6 +88,26 @@ export interface BlobStoreInterface {
   readonly stats: { entries: number };
 }
 
+// ── Key Store ──────────────────────────────────────────────────────────
+
+/** Regex for valid access key format: 8-64 alphanumeric chars plus - and _ */
+export const KEY_FORMAT = /^[a-zA-Z0-9_-]{8,64}$/;
+
+/** Per-key traffic stats for a single time window */
+export interface KeyWindowStats {
+  bytesIn: number;
+  bytesOut: number;
+  windowStart: number;
+}
+
+/** Interface for access key validation backends */
+export interface KeyStoreInterface {
+  /** Return true if key is valid. May be async for DB-backed stores. */
+  validate(key: string): boolean | Promise<boolean>;
+  /** Optional cleanup (e.g., stop file watchers). */
+  close?(): void;
+}
+
 // ── Registry ────────────────────────────────────────────────────────────
 
 export interface RegistryStats {
@@ -140,6 +163,19 @@ export interface RelayConfig {
   cors?: boolean | string;
   /** Attach to an existing HTTP server instead of creating one. */
   server?: Server;
+  /**
+   * Access key store.
+   * - KeyStoreInterface: enable key validation
+   * - false: explicitly disable (open access)
+   * - omitted: createRelay() throws, forcing a conscious decision
+   */
+  keyStore: KeyStoreInterface | false;
+  /** Behavior on invalid key. Default: 'close-after-connect' */
+  onInvalidKey?: 'reject-upgrade' | 'close-after-connect';
+  /** Traffic stats window size in ms. Default: 3600000 (1 hour) */
+  statsWindow?: number;
+  /** Number of historical windows to retain. Default: 24 */
+  statsHistory?: number;
 }
 
 // ── Relay Instance ──────────────────────────────────────────────────────
