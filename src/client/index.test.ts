@@ -389,6 +389,47 @@ describe('RelayClient', () => {
     });
   });
 
+  describe('access key', () => {
+    it('should append key as query param to URL', () => {
+      const client = new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        key: 'my-key-123',
+        WebSocket: mock.Ctor,
+      });
+      client.connect();
+      const ws = mock.getInstance();
+      expect((ws as unknown as { url: string }).url).toBe(
+        'ws://localhost:8080/server/abc12345?key=my-key-123'
+      );
+    });
+
+    it('should not append query param when no key', () => {
+      const client = new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        WebSocket: mock.Ctor,
+      });
+      client.connect();
+      const ws = mock.getInstance();
+      expect((ws as unknown as { url: string }).url).toBe(
+        'ws://localhost:8080/server/abc12345'
+      );
+    });
+
+    it('should throw on invalid key format at construction', () => {
+      expect(() => new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        key: 'bad',
+        WebSocket: mock.Ctor,
+      })).toThrow('invalid format');
+    });
+  });
+
   describe('event emitter', () => {
     it('should support off() to remove listeners', () => {
       const client = new RelayClient({

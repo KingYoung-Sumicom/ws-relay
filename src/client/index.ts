@@ -1,3 +1,4 @@
+import { KEY_FORMAT } from '../types.js';
 import type {
   RelayClientConfig,
   RelayClientEvents,
@@ -15,6 +16,7 @@ export class RelayClient {
   readonly address: string;
 
   private url: string;
+  private key?: string;
   private shouldReconnect: boolean;
   private maxReconnectDelay: number;
   private WsCtor: { new(url: string): WebSocketLike };
@@ -25,7 +27,11 @@ export class RelayClient {
   private closed = false;
 
   constructor(config: RelayClientConfig) {
+    if (config.key !== undefined && !KEY_FORMAT.test(config.key)) {
+      throw new Error('Access key has invalid format. Keys must match /^[a-zA-Z0-9_-]{8,64}$/.');
+    }
     this.url = config.url;
+    this.key = config.key;
     this.channel = config.channel;
     this.id = config.id;
     this.address = `${config.channel}:${config.id}`;
@@ -110,10 +116,13 @@ export class RelayClient {
   // ── Connection Logic ────────────────────────────────────────────────
 
   private doConnect(): void {
-    // Build URL: wss://host/{channel}/{id}
+    // Build URL: wss://host/{channel}/{id}[?key=xxx]
     const base = this.url.replace(/\/$/, '');
     const encodedId = encodeURIComponent(this.id);
-    const wsUrl = `${base}/${this.channel}/${encodedId}`;
+    let wsUrl = `${base}/${this.channel}/${encodedId}`;
+    if (this.key) {
+      wsUrl += `?key=${encodeURIComponent(this.key)}`;
+    }
 
     const ws = new this.WsCtor(wsUrl);
     this.ws = ws;

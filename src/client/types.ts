@@ -10,6 +10,8 @@ export interface RelayClientConfig {
   reconnect?: boolean;
   /** Max reconnect delay in ms. Default: 30000 */
   maxReconnectDelay?: number;
+  /** Access key for authentication */
+  key?: string;
   /** WebSocket constructor override (for Node.js < 21). Default: globalThis.WebSocket */
   WebSocket?: WebSocketConstructor;
 }
