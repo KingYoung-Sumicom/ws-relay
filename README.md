@@ -2,7 +2,7 @@
 
 A minimal WebSocket relay server for peer-to-peer communication behind NAT/firewalls. Handles signaling, presence, and blob exchange so your clients can find each other and negotiate direct connections.
 
-Extracted from [Quicksave](https://github.com/nicosalm/quicksave) — a remote git-control PWA with E2E encryption — into a standalone package for reuse across console and mobile applications.
+Extracted from [Quicksave](https://github.com/KingYoung-Sumicom/quicksave) — a remote git-control PWA with E2E encryption — into a standalone package for reuse across console and mobile applications.
 
 ## Features
 
