@@ -69,3 +69,11 @@ export function sendMessage(ws: WebSocket, message: SignalingMessage): void {
 export function isValidKeyFormat(key: string): boolean {
   return KEY_FORMAT.test(key);
 }
+
+/** Extract the 'key' query parameter from a URL string */
+export function parseQueryKey(url: string): string | null {
+  const qIdx = url.indexOf('?');
+  if (qIdx === -1) return null;
+  const params = new URLSearchParams(url.slice(qIdx));
+  return params.get('key');
+}

@@ -3,7 +3,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { RateLimiter } from './rateLimiter.js';
 import { PeerRegistry } from './registry.js';
 import { BlobStore } from './blobStore.js';
-import { parsePeerUrl, sendMessage } from './utils.js';
+import { parsePeerUrl, sendMessage, isValidKeyFormat, parseQueryKey } from './utils.js';
+import { TrafficMeter } from './trafficMeter.js';
 import type {
   RelayConfig,
   RelayInstance,
@@ -12,6 +13,7 @@ import type {
   BlobStoreInterface,
   BlobStoreConfig,
   ChannelConfig,
+  KeyStoreInterface,
 } from './types.js';
 
 declare const VERSION: string;
@@ -29,12 +31,27 @@ function isBlobStoreConfig(val: unknown): val is BlobStoreConfig {
 }
 
 export function createRelay(config: RelayConfig): RelayInstance {
+  // ── Key Store (required) ──────────────────────────────────────────
+  if (config.keyStore === undefined) {
+    throw new Error(
+      'keyStore is required. Provide a KeyStoreInterface to enable access key validation, ' +
+      'or set keyStore: false to explicitly allow open access.'
+    );
+  }
+  const keyStore: KeyStoreInterface | false = config.keyStore;
+  const onInvalidKey = config.onInvalidKey ?? 'close-after-connect';
+
   const port = config.port ?? DEFAULTS.port;
   const heartbeatInterval = config.heartbeatInterval ?? DEFAULTS.heartbeatInterval;
   const rateLimitWindow = config.rateLimitWindow ?? DEFAULTS.rateLimitWindow;
   const rateLimitMaxConnections = config.rateLimitMaxConnections ?? DEFAULTS.rateLimitMaxConnections;
   const rateLimitMaxMessages = config.rateLimitMaxMessages ?? DEFAULTS.rateLimitMaxMessages;
   const corsOrigin = config.cors === false ? null : (config.cors === true || config.cors === undefined ? '*' : config.cors);
+
+  // ── Traffic Meter ─────────────────────────────────────────────────
+  const statsWindow = config.statsWindow ?? 3600000;
+  const statsHistory = config.statsHistory ?? 24;
+  const trafficMeter = keyStore ? new TrafficMeter(statsWindow, statsHistory) : null;
 
   const registry = new PeerRegistry();
   const rateLimiter = new RateLimiter(rateLimitWindow, rateLimitMaxConnections);
@@ -109,6 +126,9 @@ export function createRelay(config: RelayConfig): RelayInstance {
       if (blobStore) {
         response.blobStore = blobStore.stats;
       }
+      if (trafficMeter) {
+        response.keys = trafficMeter.getStats();
+      }
       res.end(JSON.stringify(response));
       return;
     }
@@ -173,7 +193,7 @@ export function createRelay(config: RelayConfig): RelayInstance {
   const wss = new WebSocketServer({ server });
 
   // ── WebSocket Connection Handling ───────────────────────────────────
-  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+  wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
     const extWs = ws as ExtendedWebSocket;
 
     // Get client IP (respect X-Forwarded-For)
@@ -186,6 +206,24 @@ export function createRelay(config: RelayConfig): RelayInstance {
       sendMessage(extWs, { type: 'error', payload: { code: 'RATE_LIMITED', message: 'Too many connections' } });
       ws.close(1008, 'Rate limited');
       return;
+    }
+
+    // Key validation
+    let validatedKey: string | undefined;
+    if (keyStore) {
+      const rawKey = parseQueryKey(req.url || '');
+      if (!rawKey || !isValidKeyFormat(rawKey)) {
+        sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Missing or invalid access key' } });
+        ws.close(1008, 'Invalid key');
+        return;
+      }
+      const valid = await keyStore.validate(rawKey);
+      if (!valid) {
+        sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Access key rejected' } });
+        ws.close(1008, 'Invalid key');
+        return;
+      }
+      validatedKey = rawKey;
     }
 
     // Parse URL against configured channels
@@ -223,7 +261,14 @@ export function createRelay(config: RelayConfig): RelayInstance {
       address: `${parsed.channel}:${parsed.id}`,
       ip,
       connectedAt: Date.now(),
+      key: validatedKey,
+      bytesIn: 0,
+      bytesOut: 0,
     };
+
+    if (trafficMeter && validatedKey) {
+      trafficMeter.addConnection(validatedKey);
+    }
 
     extWs.isAlive = true;
     extWs.peer = peer;
@@ -253,6 +298,13 @@ export function createRelay(config: RelayConfig): RelayInstance {
         extWs.lastMessageReset = now;
       }
       extWs.messageCount++;
+
+      // Track bytes in
+      const messageBytes = data.byteLength;
+      peer.bytesIn += messageBytes;
+      if (trafficMeter && peer.key) {
+        trafficMeter.recordIn(peer.key, messageBytes);
+      }
 
       if (extWs.messageCount > rateLimitMaxMessages) {
         sendMessage(extWs, { type: 'error', payload: { code: 'RATE_LIMITED', message: 'Too many messages' } });
@@ -299,6 +351,15 @@ export function createRelay(config: RelayConfig): RelayInstance {
               if (result === false) return;
             }
             target.ws.send(data);
+            // Track bytes out on the target peer
+            const targetExt = target.ws as ExtendedWebSocket;
+            if (targetExt.peer) {
+              const outBytes = (data as Buffer).byteLength;
+              targetExt.peer.bytesOut += outBytes;
+              if (trafficMeter && targetExt.peer.key) {
+                trafficMeter.recordOut(targetExt.peer.key, outBytes);
+              }
+            }
             registry.incrementMessagesRelayed();
           }
           return;
@@ -329,6 +390,11 @@ export function createRelay(config: RelayConfig): RelayInstance {
         if (watcher && watcher.ws.readyState === WebSocket.OPEN) {
           sendMessage(watcher.ws, { type: 'peer-status', payload: { address: peer.address, online: false } });
         }
+      }
+
+      // Track traffic meter disconnect
+      if (trafficMeter && peer.key) {
+        trafficMeter.removeConnection(peer.key);
       }
 
       // Clean up watches this peer had
@@ -376,6 +442,9 @@ export function createRelay(config: RelayConfig): RelayInstance {
     wss.close();
     if (!config.server) {
       server.close();
+    }
+    if (keyStore && keyStore.close) {
+      keyStore.close();
     }
   };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parsePeerUrl, sendMessage, isValidKeyFormat } from './utils.js';
+import { parsePeerUrl, sendMessage, isValidKeyFormat, parseQueryKey } from './utils.js';
 import { WebSocket } from 'ws';
 import type { ChannelConfig } from './types.js';
 
@@ -157,5 +157,23 @@ describe('sendMessage', () => {
     sendMessage(ws, { type: 'test' });
 
     expect(ws.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseQueryKey', () => {
+  it('should extract key from query string', () => {
+    expect(parseQueryKey('/pwa/abc12345?key=my-key-123')).toBe('my-key-123');
+  });
+
+  it('should return null when no query string', () => {
+    expect(parseQueryKey('/pwa/abc12345')).toBeNull();
+  });
+
+  it('should return null when key param missing', () => {
+    expect(parseQueryKey('/pwa/abc12345?foo=bar')).toBeNull();
+  });
+
+  it('should decode URL-encoded key', () => {
+    expect(parseQueryKey('/pwa/abc12345?key=my%2Dkey%2D123')).toBe('my-key-123');
   });
 });
