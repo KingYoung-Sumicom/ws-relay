@@ -190,7 +190,26 @@ export function createRelay(config: RelayConfig): RelayInstance {
   const server = config.server ?? createServer();
   server.on('request', handleHttpRequest);
 
-  const wss = new WebSocketServer({ server });
+  // ── WebSocket Server with optional verifyClient ────────────────────
+  const wssOptions: { server: typeof server; verifyClient?: (info: { req: IncomingMessage }, cb: (result: boolean, code?: number, message?: string) => void) => void } = { server };
+
+  if (keyStore && onInvalidKey === 'reject-upgrade') {
+    wssOptions.verifyClient = (info, cb) => {
+      const rawKey = parseQueryKey(info.req.url || '');
+      if (!rawKey || !isValidKeyFormat(rawKey)) {
+        cb(false, 403, 'Invalid key');
+        return;
+      }
+      const result = keyStore.validate(rawKey);
+      if (result instanceof Promise) {
+        result.then(valid => cb(valid, valid ? undefined : 403, valid ? undefined : 'Invalid key'));
+      } else {
+        cb(result, result ? undefined : 403, result ? undefined : 'Invalid key');
+      }
+    };
+  }
+
+  const wss = new WebSocketServer(wssOptions);
 
   // ── WebSocket Connection Handling ───────────────────────────────────
   wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
@@ -212,18 +231,24 @@ export function createRelay(config: RelayConfig): RelayInstance {
     let validatedKey: string | undefined;
     if (keyStore) {
       const rawKey = parseQueryKey(req.url || '');
-      if (!rawKey || !isValidKeyFormat(rawKey)) {
-        sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Missing or invalid access key' } });
-        ws.close(1008, 'Invalid key');
-        return;
+      if (onInvalidKey === 'reject-upgrade') {
+        // Already validated in verifyClient — just extract the key
+        validatedKey = rawKey ?? undefined;
+      } else {
+        // close-after-connect: validate here
+        if (!rawKey || !isValidKeyFormat(rawKey)) {
+          sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Missing or invalid access key' } });
+          ws.close(1008, 'Invalid key');
+          return;
+        }
+        const valid = await keyStore.validate(rawKey);
+        if (!valid) {
+          sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Access key rejected' } });
+          ws.close(1008, 'Invalid key');
+          return;
+        }
+        validatedKey = rawKey;
       }
-      const valid = await keyStore.validate(rawKey);
-      if (!valid) {
-        sendMessage(extWs, { type: 'error', payload: { code: 'INVALID_KEY', message: 'Access key rejected' } });
-        ws.close(1008, 'Invalid key');
-        return;
-      }
-      validatedKey = rawKey;
     }
 
     // Parse URL against configured channels
