@@ -65,4 +65,17 @@ describe('FileKeyStore', () => {
     const store = new FileKeyStore(keyFile, { watch: true });
     store.close();
   });
+
+  it('should keep existing keys when reload fails', () => {
+    fs.writeFileSync(keyFile, 'key-abc-123\n');
+    const store = new FileKeyStore(keyFile, { watch: false });
+    expect(store.validate('key-abc-123')).toBe(true);
+
+    // Delete the file so reload fails
+    fs.unlinkSync(keyFile);
+    store.reload();
+
+    // Should still have old keys
+    expect(store.validate('key-abc-123')).toBe(true);
+  });
 });

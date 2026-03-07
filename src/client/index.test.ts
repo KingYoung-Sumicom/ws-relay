@@ -463,4 +463,87 @@ describe('RelayClient', () => {
       expect(h2).toHaveBeenCalled();
     });
   });
+
+  describe('edge cases', () => {
+    it('should throw when WebSocket is not available', () => {
+      const original = globalThis.WebSocket;
+      // @ts-expect-error - simulating no WebSocket
+      globalThis.WebSocket = undefined;
+      try {
+        expect(() => new RelayClient({
+          url: 'ws://localhost:8080',
+          channel: 'server',
+          id: 'abc12345',
+        })).toThrow('WebSocket not available');
+      } finally {
+        globalThis.WebSocket = original;
+      }
+    });
+
+    it('should cancel pending reconnect timer on close()', () => {
+      const client = new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        reconnect: true,
+        WebSocket: mock.Ctor,
+      });
+      client.connect();
+      mock.getInstance().simulateOpen();
+      // Trigger disconnect — starts reconnect timer
+      mock.getInstance().simulateClose();
+      // Close before timer fires — should cancel the timer
+      client.close();
+      vi.advanceTimersByTime(60000);
+      expect(client.connected).toBe(false);
+    });
+
+    it('should cap reconnect delay at maxReconnectDelay', () => {
+      const client = new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        reconnect: true,
+        maxReconnectDelay: 4000,
+        WebSocket: mock.Ctor,
+      });
+      client.connect();
+
+      // Disconnect many times to escalate backoff: 1s, 2s, 4s, 4s (capped)
+      mock.getInstance().simulateClose();
+      vi.advanceTimersByTime(1000); // 1s
+      mock.getInstance().simulateClose();
+      vi.advanceTimersByTime(2000); // 2s
+      mock.getInstance().simulateClose();
+      vi.advanceTimersByTime(4000); // 4s (capped)
+
+      const ws4 = mock.getInstance();
+      ws4.simulateClose();
+
+      // Should still reconnect at 4s (not 8s)
+      vi.advanceTimersByTime(3999);
+      expect(mock.getInstance()).toBe(ws4); // not yet
+      vi.advanceTimersByTime(1);
+      expect(mock.getInstance()).not.toBe(ws4); // reconnected
+    });
+
+    it('should handle non-string message data', () => {
+      const client = new RelayClient({
+        url: 'ws://localhost:8080',
+        channel: 'server',
+        id: 'abc12345',
+        WebSocket: mock.Ctor,
+      });
+      const onMessage = vi.fn();
+      client.on('message', onMessage);
+      client.connect();
+      mock.getInstance().simulateOpen();
+
+      // Simulate non-string data (Buffer-like)
+      mock.getInstance().simulateMessage(
+        JSON.stringify({ from: 'test:peer1234', payload: 'hello' })
+      );
+      expect(onMessage).toHaveBeenCalledWith('test:peer1234', 'hello');
+    });
+  });
 });
