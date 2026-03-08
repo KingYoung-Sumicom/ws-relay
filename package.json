@@ -36,7 +36,10 @@
     "peer-to-peer",
     "p2p"
   ],
+  "author": "Jimmy Cheng (https://github.com/KingYoung-Sumicom)",
   "license": "MIT",
+  "homepage": "https://github.com/KingYoung-Sumicom/ws-relay#readme",
+  "bugs": "https://github.com/KingYoung-Sumicom/ws-relay/issues",
   "repository": {
     "type": "git",
     "url": "https://github.com/KingYoung-Sumicom/ws-relay.git"
