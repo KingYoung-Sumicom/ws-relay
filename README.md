@@ -261,6 +261,10 @@ When `keyStore` is enabled, the relay tracks per-key traffic in time windows. `G
 
 Configure with `statsWindow` (default: 1 hour) and `statsHistory` (default: 24 windows). Use external monitoring tools to poll `/stats` and set alerting rules.
 
+## API Reference
+
+See [docs/api.md](docs/api.md) for the complete API reference with all types, configuration options, and examples.
+
 ## Development
 
 ```bash
