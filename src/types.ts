@@ -155,7 +155,7 @@ export interface RelayConfig {
   heartbeatInterval?: number;
   /** Rate limit window in ms. Default: 60000 */
   rateLimitWindow?: number;
-  /** Max new connections per IP per window. Default: 10 */
+  /** Max concurrent connections per IP. Default: 30 */
   rateLimitMaxConnections?: number;
   /** Max messages per connection per window. Default: 100 */
   rateLimitMaxMessages?: number;

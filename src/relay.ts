@@ -22,7 +22,7 @@ const DEFAULTS = {
   port: 8080,
   heartbeatInterval: 30000,
   rateLimitWindow: 60000,
-  rateLimitMaxConnections: 10,
+  rateLimitMaxConnections: 30,
   rateLimitMaxMessages: 100,
 } as const;
 
@@ -54,7 +54,7 @@ export function createRelay(config: RelayConfig): RelayInstance {
   const trafficMeter = keyStore ? new TrafficMeter(statsWindow, statsHistory) : null;
 
   const registry = new PeerRegistry();
-  const rateLimiter = new RateLimiter(rateLimitWindow, rateLimitMaxConnections);
+  const rateLimiter = new RateLimiter(rateLimitMaxConnections);
   const hooks = config.hooks ?? {};
 
   // Sort channels by name length descending so longer prefixes match first
@@ -215,8 +215,9 @@ export function createRelay(config: RelayConfig): RelayInstance {
   wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
     const extWs = ws as ExtendedWebSocket;
 
-    // Get client IP (respect X-Forwarded-For)
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
+    // Get client IP (last entry in X-Forwarded-For is from the closest trusted proxy)
+    const forwarded = req.headers['x-forwarded-for'] as string;
+    const ip = forwarded?.split(',').pop()?.trim()
       || req.socket.remoteAddress
       || 'unknown';
 
@@ -408,6 +409,8 @@ export function createRelay(config: RelayConfig): RelayInstance {
 
     // ── Disconnect ──────────────────────────────────────────────────
     ws.on('close', () => {
+      rateLimiter.releaseConnection(ip);
+
       // Notify watchers that this peer went offline
       const peerWatchers = registry.getWatchers(peer.address);
       for (const watcherAddr of peerWatchers) {
