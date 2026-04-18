@@ -49,7 +49,36 @@ export interface ChannelConfig {
 
 // ── Hooks ───────────────────────────────────────────────────────────────
 
+export type VerifyPeerResult =
+  | { ok: true }
+  | { ok: false; reason?: string; closeCode?: number; errorCode?: string };
+
+export interface VerifyPeerContext {
+  parsed: { channel: string; id: string };
+  req: IncomingMessage;
+  ip: string;
+  /** The access key that passed keyStore validation, if keyStore is enabled. */
+  key?: string;
+  registry: PeerRegistryInterface;
+}
+
 export interface RelayHooks {
+  /**
+   * Called after URL parsing and key validation, BEFORE duplicate resolution
+   * and registry insertion. Lets consumers cryptographically verify the peer
+   * (e.g. validating a signed query param against the URL-asserted identity).
+   *
+   * Return `{ ok: true }` to allow the connection to proceed to duplicate
+   * handling and registry insertion. Return `{ ok: false, ... }` to refuse —
+   * the library will send an error frame and close the WebSocket with the
+   * given code/reason. The peer is NEVER added to the registry, no watchers
+   * are notified, and `onDuplicate` does NOT run (so a failed verification
+   * cannot evict a legitimate peer).
+   *
+   * May be async. If it throws or rejects, the connection is closed with code
+   * 1011 and the error is logged to console.error.
+   */
+  verifyPeer?(ctx: VerifyPeerContext): VerifyPeerResult | Promise<VerifyPeerResult>;
   /** Called after a peer is registered. */
   onPeerConnect?(peer: Peer, registry: PeerRegistryInterface): void;
   /** Called before a peer is removed from the registry. */

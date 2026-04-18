@@ -23,4 +23,6 @@ export type {
   KeyWindowStats,
   PeerRegistryInterface,
   RegistryStats,
+  VerifyPeerContext,
+  VerifyPeerResult,
 } from './types.js';

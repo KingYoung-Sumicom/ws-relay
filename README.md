@@ -152,6 +152,11 @@ createRelay({
 
 ```typescript
 hooks: {
+  verifyPeer(ctx) {
+    // ctx: { parsed, req, ip, key?, registry }
+    // Runs BEFORE duplicate resolution. Return { ok: false, ... } to refuse.
+    return { ok: true };
+  },
   onPeerConnect(peer, registry) { },
   onPeerDisconnect(peer, registry) { },
   onMessage(peer, msg, raw, registry) { },
@@ -163,6 +168,27 @@ hooks: {
   },
 }
 ```
+
+#### `verifyPeer` — pre-registration auth
+
+Cryptographically verify connecting peers before they enter the registry. A rejection never touches the existing peer with the same id, so an attacker who only knows the public URL cannot use `onDuplicate: 'replace'` to flap a legitimate peer offline.
+
+```typescript
+hooks: {
+  async verifyPeer({ parsed, req, ip, key }) {
+    const url = new URL(req.url!, 'http://x');
+    const ts = Number(url.searchParams.get('ts'));
+    const sig = url.searchParams.get('sig');
+    if (!sig || !ts || Math.abs(Date.now() - ts) > 30_000) {
+      return { ok: false, reason: 'stale or missing signature', errorCode: 'BAD_SIG' };
+    }
+    const valid = await verifySignature(parsed.id, ts, sig); // your check
+    return valid ? { ok: true } : { ok: false, errorCode: 'BAD_SIG' };
+  },
+}
+```
+
+Returning `{ ok: false }` sends a structured `error` frame (`code`/`message`) then closes with `closeCode ?? 1008`. If the hook throws, the socket closes with code 1011.
 
 ## Access Keys
 

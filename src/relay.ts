@@ -260,6 +260,35 @@ export function createRelay(config: RelayConfig): RelayInstance {
       return;
     }
 
+    // Pre-registration verification hook. Runs before duplicate resolution so a
+    // failed verify cannot trigger onDuplicate: 'replace' and evict a legit peer.
+    if (hooks.verifyPeer) {
+      try {
+        const result = await hooks.verifyPeer({
+          parsed,
+          req,
+          ip,
+          key: validatedKey,
+          registry,
+        });
+        if (!result.ok) {
+          sendMessage(extWs, {
+            type: 'error',
+            payload: {
+              code: result.errorCode ?? 'VERIFY_FAILED',
+              message: result.reason ?? 'Peer verification failed',
+            },
+          });
+          ws.close(result.closeCode ?? 1008, result.reason ?? 'Verify failed');
+          return;
+        }
+      } catch (err) {
+        console.error('[ws-relay] verifyPeer threw:', err);
+        ws.close(1011, 'Internal verification error');
+        return;
+      }
+    }
+
     // Check for duplicate
     const channelConfig = channels.find(c => c.name === parsed.channel);
     const onDuplicate = channelConfig?.onDuplicate ?? 'replace';
