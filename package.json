@@ -1,6 +1,6 @@
 {
   "name": "@sumicom/ws-relay",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Minimal WebSocket relay server for peer-to-peer communication behind NAT/firewalls",
   "type": "module",
   "main": "dist/index.js",
